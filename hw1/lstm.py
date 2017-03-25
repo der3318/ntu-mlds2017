@@ -6,6 +6,10 @@ import collections
 import numpy as np
 import sys
 
+random.seed(3318)
+np.random.seed(18)
+tf.set_random_seed(33)
+
 n_dimensions = 12000 + 1 # embedding dimensions
 n_steps = 10
 n_output = n_dimensions # output layer (50-dimensioned embedding)
@@ -14,7 +18,7 @@ n_hidden = 256 # hidden layer num of features
 
 # Parameters
 learning_rate = 0.01
-epoch = 0
+epoch = 10
 batch_size = 1000 # number of sentences in a batch
 drop_out_prob = 0.5
 
@@ -157,6 +161,8 @@ with tf.Session() as sess:
         latest_checkpoint = tf.train.latest_checkpoint("./model/")
         saver = tf.train.import_meta_graph("model/model.meta")
         saver.restore(sess, latest_checkpoint)
+        b = sess.run(biases)
+        print(b)
     else:
         print("\x1b[0;32;40m<Optimization Finished> Saving Model\x1b[0m")
         saver.save(sess, "model/model")
@@ -214,5 +220,5 @@ with tf.Session() as sess:
                 print("Forward Probability of Answers:", sims)
             label = labels[np.argmax(np.multiply(y_pred_cand, sims))]
             fout.write(str(lineNumber + 1) + "," + label + "\n")
-print("Average length", total_len * 1.0/ len(dataset) ) 
+print("Average length", total_len * 1.0/ len(dataset) )
 print("\x1b[0;32;40m<Done> Output File Available\x1b[0m")
