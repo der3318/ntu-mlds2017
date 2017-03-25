@@ -5,9 +5,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from utility import *
 
+test_path = sys.argv[1]
+output_path = sys.argv[2]
+
 model = load_glove('embeddings.txt')
 
-questions = get_test_data()
+questions = get_test_data(fname=test_path)
 
 ans = []
 for i, q in enumerate(questions):
@@ -26,4 +29,4 @@ for i, q in enumerate(questions):
     #print(q, '\n', totalsims)
     ans.append(np.argmax(totalsims))
 
-write_submit_file(ans, 'output.csv')
+write_submit_file(ans, output_path)
