@@ -14,7 +14,7 @@ n_hidden = 256 # hidden layer num of features
 
 # Parameters
 learning_rate = 0.01
-epoch = 0
+epoch = 10
 batch_size = 1000 # number of sentences in a batch
 drop_out_prob = 0.5
 
@@ -49,7 +49,23 @@ def build_dict():
     for word, _ in count:
         dictionary[word] = len(dictionary) + 1
     return dictionary
-dictionary = build_dict()
+
+def load_dict(filename):
+    dictionary = dict()
+    with open(filename, "r") as dict_file:
+        for line in dict_file:
+            key, value = line.split()
+            dictionary[key] = int(value)
+    print("Load dictionary done!")
+    return dictionary
+
+print("is_load ", is_load)
+dictionary = build_dict() if not is_load else load_dict("dict.txt")
+
+if not is_load:
+    with open("dict.txt", "w") as dict_file:
+        for key, value in dictionary.items():
+            dict_file.write("%s %d\n" % (key, value))
 
 def read_file(filename):
     data = []
