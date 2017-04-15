@@ -1,6 +1,10 @@
 import math
 import operator
 import sys
+
+from functools import reduce
+
+
 def count_ngram(candidate, references, n):
     clipped_count = 0
     count = 0
@@ -117,15 +121,16 @@ def eval(candidate, references):
         return 0
     if isinstance(references, list):
         score = 0
-        if not isinstance(ref, str):
-            print('Reference string must be a string')
-            return 0
         for ref in references:
+            if not isinstance(ref, str):
+                print('Reference string must be a string')
+                return 0
             score += BLEU(candidate, ref)
-        return score
+        return score / len(references)
     else:
         if not isinstance(references , str):
             print('Reference string must be a string')
             return 0
         return BLEU(candidate, references)
-print(eval("sad is a emoj", "i have a do is cat"))
+
+#print(eval("sad is a emoj", ["i have a do is cat", "this is hard"]))
