@@ -52,6 +52,17 @@ class S2VTmodel:
         self.caption = tf.placeholder(tf.int32, [None, self.n_step2+1])
         #self.caption_mask = tf.placeholder(tf.float32, [None, self.n_steps2+1])
         
+
+    def _embed_plus_output(self, embed, output):
+        w = tf.get_variable('w', [2*self.n_hidden, self.n_hidden], initializer=tf.contrib.layers.xavier_initializer())
+        b = tf.get_variable('b', [self.n_hidden], initializer=tf.constant_initializer(0.0))
+
+        concated = tf.concat([embed, output], axis=1)
+        ht = tf.nn.relu(tf.nn.xw_plus_b(concated, w, b))
+
+        return ht
+
+
         
     def _attention_layer(self, outputs, state):
         # outputs:  [batch_size, 80, n_hidden]
@@ -62,7 +73,8 @@ class S2VTmodel:
         h_att = tf.nn.relu(outputs + tf.expand_dims(state, 1))
         out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.n_hidden]), w_att), [-1, self.n_step1])
         alpha = tf.nn.softmax(out_att)  
-        context = tf.reduce_sum(outputs * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
+        context = tf.reduce_sum(outputs * tf.expand_dims(alpha, 2), 1, name='context')
+
         return context
     
 
@@ -117,9 +129,11 @@ class S2VTmodel:
 
             with tf.variable_scope("LSTM1", reuse=True):
                 output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
-                
+            
+            with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
+                ht = self._embed_plus_output(current_embed, output1)
+
             with tf.variable_scope("attention", reuse=(i!=0)):
-                ht = current_embed + output1
                 context = self._attention_layer(outputs, h2)
 
             with tf.variable_scope("LSTM2", reuse=True):
@@ -193,8 +207,10 @@ class S2VTmodel:
             with tf.variable_scope("LSTM1", reuse=True):
                 output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
             
+            with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
+                ht = self._embed_plus_output(current_embed, output1)
+
             with tf.variable_scope("attention", reuse=(i!=0)):
-                ht = current_embed + output1
                 context = self._attention_layer(outputs, h2)
 
             with tf.variable_scope("LSTM2", reuse=True):
