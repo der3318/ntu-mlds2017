@@ -141,7 +141,6 @@ class data:
 
 
     def save(self, dir_path='./data/'):
-        os.mkdir(dir_path)
         path_wordtoix = os.path.join(dir_path, 'wordtoix')
         path_ixtoword = os.path.join(dir_path, 'ixtoword')
         

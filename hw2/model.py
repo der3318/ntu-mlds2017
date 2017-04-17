@@ -171,7 +171,7 @@ class S2VTmodel:
         return generated_words
 
 
-    def train(self, Data, X, y, valid_X=None, valid_y=None, batch_size=50, learning_rate=1e-3, epoch=2000, period=100):
+    def train(self, Data, X, y, valid_X=None, valid_y=None, batch_size=50, learning_rate=1e-3, epoch=2000, period=100, name='model'):
         """
         Parameters
         ----------
@@ -188,7 +188,6 @@ class S2VTmodel:
         
         """
 
-        Data.save()
     
         loss = self.build_model(batch_size=batch_size)
         tf.get_variable_scope().reuse_variables()
@@ -232,7 +231,7 @@ class S2VTmodel:
                 print('epoch no.{:d} done, \tvalidation score: {:.5f}'.format(step, np.mean(scores)))
 
                 if step % period == period-1:
-                    saver.save(sess, 'models/model', global_step=step)
+                    saver.save(sess, os.path.join('models/', name), global_step=step)
                     print('model checkpoint saved on step {:d}'.format(step))
 
         
@@ -259,8 +258,8 @@ class S2VTmodel:
             sess.run(init)
             
             saver = tf.train.Saver()
-            save_path = tf.train.latest_checkpoint(model_path)
-            saver.restore(sess, save_path)
+            #save_path = tf.train.latest_checkpoint(model_path)
+            saver.restore(sess, model_path)
 
             pred = sess.run(
                     generated_words,

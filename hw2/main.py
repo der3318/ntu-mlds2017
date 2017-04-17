@@ -20,7 +20,6 @@ dim_image = 4096
 
 path = 'MLDS_hw2_data/'
 model_path = './models/'
-os.mkdir(model_path)
 
 def main(args):
     Data = data(
@@ -30,6 +29,7 @@ def main(args):
             os.path.join(path, 'testing_public_label.json'),
             )
     
+    Data.load()
     n_words = Data.get_vocab_size()
 
     model = S2VTmodel(
@@ -41,21 +41,20 @@ def main(args):
                 seed=3318
                 )
 
-    train_X, train_y, valid_X, valid_y = Data.gen_validation_data(cross=False, caption_num=1)
+    train_X, train_y, valid_X, valid_y = Data.gen_validation_data(cross=False, caption_num=10)
     
-    model.train(Data, train_X, train_y, valid_X, valid_y,
-                batch_size=args.batch_size,
-                learning_rate=args.rate,
-                epoch=args.epoch,
-                period=args.period,
-                name=args.name
-                )
-    
+    if args.train:
+        model.train(Data, train_X, train_y, valid_X, valid_y,
+                    batch_size=args.batch_size,
+                    learning_rate=args.rate,
+                    epoch=args.epoch,
+                    period=args.period,
+                    name=args.name
+                    )
 
-    Data.load()
     test_X, test_y = Data.gen_test_data(caption_num=1)
-   
-    pred = model.predict(test_X, model_path=model_path)
+    
+    pred = model.predict(test_X, model_path=os.path.join(model_path, args.name))
 
     scores = []
     for i, (p, ty) in enumerate(zip(pred, test_y)):
@@ -71,7 +70,7 @@ def main(args):
         print()
 
     print('average bleu score overall: ', np.mean(scores))
-
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -109,6 +108,10 @@ if __name__ == '__main__':
     parser.add_argument('--name',
                         help='model name to save', 
                         default='model')
+    
+    parser.add_argument('--train',
+                        help='whether train the model or not',
+                        action='store_true')
 
     args = parser.parse_args()
 
