@@ -39,8 +39,8 @@ class S2VTmodel:
         with tf.device("/cpu:0"):
             self.Wemb = tf.Variable(tf.random_uniform([n_words, n_hidden], -0.1, 0.1), name='Wemb')
         
-        self.lstm1 = rnn.BasicLSTMCell(n_hidden, state_is_tuple=False)
-        self.lstm2 = rnn.BasicLSTMCell(n_hidden, state_is_tuple=False)
+        self.lstm1 = rnn.BasicLSTMCell(n_hidden)
+        self.lstm2 = rnn.BasicLSTMCell(n_hidden)
 
         self.encode_image_W = tf.Variable( tf.random_uniform([dim_image, n_hidden], -0.1, 0.1), name='encode_image_W')
         self.encode_image_b = tf.Variable( tf.zeros([n_hidden]), name='encode_image_b')
@@ -52,6 +52,19 @@ class S2VTmodel:
         self.caption = tf.placeholder(tf.int32, [None, self.n_step2+1])
         #self.caption_mask = tf.placeholder(tf.float32, [None, self.n_steps2+1])
         
+        
+    def _attention_layer(self, outputs, state):
+        # outputs:  [batch_size, 80, n_hidden]
+        # state:    [batch_size, n_hidden]
+       
+        w_att = tf.get_variable('w_att', [self.n_hidden, 1], initializer=tf.contrib.layers.xavier_initializer())
+        
+        h_att = tf.nn.relu(outputs + tf.expand_dims(state, 1))
+        out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.n_hidden]), w_att), [-1, self.n_step1])
+        alpha = tf.nn.softmax(out_att)  
+        context = tf.reduce_sum(outputs * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
+        return context
+    
 
     def build_model(self, batch_size=50):
 
@@ -62,9 +75,17 @@ class S2VTmodel:
         image_emb = tf.nn.xw_plus_b( video_flat, self.encode_image_W, self.encode_image_b ) # (batch_size*n_lstm_steps, dim_hidden)
         image_emb = tf.reshape(image_emb, [-1, self.n_step1, self.n_hidden])
        
+        c1 = tf.zeros([batch_size, self.n_hidden])
+        h1 = tf.zeros([batch_size, self.n_hidden])
+        c2 = tf.zeros([batch_size, self.n_hidden])
+        h2 = tf.zeros([batch_size, self.n_hidden])
+        """
         state1 = tf.zeros([batch_size, self.lstm1.state_size])
         state2 = tf.zeros([batch_size, self.lstm2.state_size])
+        """
         padding = tf.zeros([batch_size, self.n_hidden])
+
+        outputs = []
 
         generated_words = []
         probs = []
@@ -72,28 +93,37 @@ class S2VTmodel:
 
         ##############################  Encoding Stage ##################################
         for i in range(0, self.n_step1):
-            if i > 0:
-                tf.get_variable_scope().reuse_variables()
+            #if i > 0:
+            #    tf.get_variable_scope().reuse_variables()
 
-            with tf.variable_scope("LSTM1"):
-                output1, state1 = self.lstm1(image_emb[:,i,:], state1)
+            with tf.variable_scope("LSTM1", reuse=(i!=0)):
+                output1, (c1, h1) = self.lstm1(image_emb[:,i,:], state=[c1, h1])
 
-            with tf.variable_scope("LSTM2"):
-                output2, state2 = self.lstm2(tf.concat([padding, output1], axis=1), state2)
+            outputs.append(output1)
 
+            with tf.variable_scope("LSTM2", reuse=(i!=0)):
+                output2, (c2, h2) = self.lstm2(tf.concat([padding, output1], axis=1), state=[c2, h2])
+
+        outputs = tf.stack(outputs)
+        outputs = tf.transpose(outputs, (1, 0, 2))
+        
         ############################# Decoding Stage ######################################
         for i in range(0, self.n_step2): ## Phase 2 => only generate captions
             
             with tf.device("/cpu:0"):
                 current_embed = tf.nn.embedding_lookup(self.Wemb, caption[:, i])
 
-            tf.get_variable_scope().reuse_variables()
+            #tf.get_variable_scope().reuse_variables()
 
-            with tf.variable_scope("LSTM1"):
-                output1, state1 = self.lstm1(padding, state1)
+            with tf.variable_scope("LSTM1", reuse=True):
+                output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
+                
+            with tf.variable_scope("attention", reuse=(i!=0)):
+                ht = current_embed + output1
+                context = self._attention_layer(outputs, h2)
 
-            with tf.variable_scope("LSTM2"):
-                output2, state2 = self.lstm2(tf.concat([current_embed, output1], axis=1), state2)
+            with tf.variable_scope("LSTM2", reuse=True):
+                output2, (c2, h2) = self.lstm2(tf.concat([ht, context], axis=1), state=[c2, h2])
 
             labels = tf.expand_dims(caption[:, i+1], axis=1)
             indices = tf.expand_dims(tf.range(0, batch_size, 1), axis=1)
@@ -122,10 +152,15 @@ class S2VTmodel:
         image_emb = tf.nn.xw_plus_b( video_flat, self.encode_image_W, self.encode_image_b ) # (batch_size*n_lstm_steps, dim_hidden)
         image_emb = tf.reshape(image_emb, [-1, self.n_step1, self.n_hidden])
        
-        state1 = tf.zeros([batch_size, self.lstm1.state_size])
-        state2 = tf.zeros([batch_size, self.lstm2.state_size])
+        c1 = tf.zeros([batch_size, self.n_hidden])
+        h1 = tf.zeros([batch_size, self.n_hidden])
+        c2 = tf.zeros([batch_size, self.n_hidden])
+        h2 = tf.zeros([batch_size, self.n_hidden])
+        #state1 = tf.zeros([batch_size, self.lstm1.state_size])
+        #state2 = tf.zeros([batch_size, self.lstm2.state_size])
         padding = tf.zeros([batch_size, self.n_hidden])
 
+        outputs = []
         generated_words = []
         probs = []
         embeds = []
@@ -133,14 +168,19 @@ class S2VTmodel:
 
         ##############################  Encoding Stage ##################################
         for i in range(0, self.n_step1):
-            if i > 0:
-                tf.get_variable_scope().reuse_variables()
+            #if i > 0:
+            #    tf.get_variable_scope().reuse_variables()
 
-            with tf.variable_scope("LSTM1"):
-                output1, state1 = self.lstm1(image_emb[:,i,:], state1)
+            with tf.variable_scope("LSTM1", reuse=(i!=0)):
+                output1, (c1, h1) = self.lstm1(image_emb[:,i,:], state=[c1, h1])
 
-            with tf.variable_scope("LSTM2"):
-                output2, state2 = self.lstm2(tf.concat([padding, output1], axis=1), state2)
+            outputs.append(output1)
+
+            with tf.variable_scope("LSTM2", reuse=(i!=0)):
+                output2, (c2, h2) = self.lstm2(tf.concat([padding, output1], axis=1), state=[c2, h2])
+
+        outputs = tf.stack(outputs)
+        outputs = tf.transpose(outputs, (1, 0, 2))
 
         ############################# Decoding Stage ######################################
         for i in range(0, self.n_step2):
@@ -148,13 +188,17 @@ class S2VTmodel:
                 with tf.device("/cpu:0"):
                     current_embed = tf.nn.embedding_lookup(self.Wemb, tf.ones([batch_size], dtype=tf.int64))
 
-            tf.get_variable_scope().reuse_variables()
+            #tf.get_variable_scope().reuse_variables()
 
-            with tf.variable_scope("LSTM1"):
-                output1, state1 = self.lstm1(padding, state1)
+            with tf.variable_scope("LSTM1", reuse=True):
+                output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
+            
+            with tf.variable_scope("attention", reuse=(i!=0)):
+                ht = current_embed + output1
+                context = self._attention_layer(outputs, h2)
 
-            with tf.variable_scope("LSTM2"):
-                output2, state2 = self.lstm2(tf.concat([current_embed, output1], axis=1), state2)
+            with tf.variable_scope("LSTM2", reuse=True):
+                output2, (c2, h2) = self.lstm2(tf.concat([ht, context], axis=1), state=[c2, h2])
 
             logit_words = tf.nn.xw_plus_b(output2, self.embed_word_W, self.embed_word_b)
             max_prob_index = tf.argmax(logit_words, axis=1)
