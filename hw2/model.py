@@ -50,6 +50,7 @@ class S2VTmodel:
                   
         self.video = tf.placeholder(tf.float32, [None, self.n_step1, self.dim_image])
         self.caption = tf.placeholder(tf.int32, [None, self.n_step2+1])
+        self.schedule_sampling = tf.placeholder(tf.float32,[1])
         #self.caption_mask = tf.placeholder(tf.float32, [None, self.n_steps2+1])
         
 
@@ -121,9 +122,14 @@ class S2VTmodel:
         
         ############################# Decoding Stage ######################################
         for i in range(0, self.n_step2): ## Phase 2 => only generate captions
-            
-            with tf.device("/cpu:0"):
-                current_embed = tf.nn.embedding_lookup(self.Wemb, caption[:, i])
+        
+            s = np.random.uniform(0,1)
+            if s > self.schedule_sampling or i == 0:
+                with tf.device("/cpu:0"):
+                    current_embed = tf.nn.embedding_lookup(self.Wemb, caption[:, i])
+            else:
+                with tf.device("/cpu:0"):
+                    current_embed = tf.nn.embedding_lookup(self.Wemb, max_prob_index)
 
             #tf.get_variable_scope().reuse_variables()
 
@@ -265,13 +271,14 @@ class S2VTmodel:
             sess.run(init)
 
             for step in range(epoch):
-                
+                sample_probability = float(step)/2*epoch
                 for b, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size, X, y, self.n_step2+1)):
                     _, loss_val = sess.run(
                                     [optimizer, loss], 
                                     feed_dict={
                                         self.video: batch_X,
-                                        self.caption: batch_y
+                                        self.caption: batch_y,
+                                        self.schedule_sampling: sample_probability
                                     })
 
                     print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}'.format(step, b, loss_val))
