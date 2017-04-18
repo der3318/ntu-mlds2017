@@ -50,7 +50,7 @@ class S2VTmodel:
                   
         self.video = tf.placeholder(tf.float32, [None, self.n_step1, self.dim_image])
         self.caption = tf.placeholder(tf.int32, [None, self.n_step2+1])
-        self.schedule_sampling = tf.placeholder(tf.float32,[1])
+        self.schedule_sampling = tf.placeholder(tf.bool, [self.n_step2])
         #self.caption_mask = tf.placeholder(tf.float32, [None, self.n_steps2+1])
         
 
@@ -92,10 +92,7 @@ class S2VTmodel:
         h1 = tf.zeros([batch_size, self.n_hidden])
         c2 = tf.zeros([batch_size, self.n_hidden])
         h2 = tf.zeros([batch_size, self.n_hidden])
-        """
-        state1 = tf.zeros([batch_size, self.lstm1.state_size])
-        state2 = tf.zeros([batch_size, self.lstm2.state_size])
-        """
+        
         padding = tf.zeros([batch_size, self.n_hidden])
 
         outputs = []
@@ -106,8 +103,6 @@ class S2VTmodel:
 
         ##############################  Encoding Stage ##################################
         for i in range(0, self.n_step1):
-            #if i > 0:
-            #    tf.get_variable_scope().reuse_variables()
 
             with tf.variable_scope("LSTM1", reuse=(i!=0)):
                 output1, (c1, h1) = self.lstm1(image_emb[:,i,:], state=[c1, h1])
@@ -122,16 +117,13 @@ class S2VTmodel:
         
         ############################# Decoding Stage ######################################
         for i in range(0, self.n_step2): ## Phase 2 => only generate captions
-        
-            s = np.random.uniform(0,1)
-            if s > self.schedule_sampling or i == 0:
+            
+            if i == 0:
                 with tf.device("/cpu:0"):
                     current_embed = tf.nn.embedding_lookup(self.Wemb, caption[:, i])
             else:
                 with tf.device("/cpu:0"):
-                    current_embed = tf.nn.embedding_lookup(self.Wemb, max_prob_index)
-
-            #tf.get_variable_scope().reuse_variables()
+                    current_embed = tf.cond(self.schedule_sampling[i], lambda: tf.nn.embedding_lookup(self.Wemb, caption[:, i]), lambda: tf.nn.embedding_lookup(self.Wemb, max_prob_index))
 
             with tf.variable_scope("LSTM1", reuse=True):
                 output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
@@ -153,7 +145,7 @@ class S2VTmodel:
             logit_words = tf.nn.xw_plus_b(output2, self.embed_word_W, self.embed_word_b)
             cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=onehot_labels, logits=logit_words)
             #cross_entropy = cross_entropy * caption_mask[:,i]
-            max_prob_index = tf.argmax(logit_words, axis=1)[0]
+            max_prob_index = tf.argmax(logit_words, axis=1)
             generated_words.append(max_prob_index)
             probs.append(logit_words)
 
@@ -176,8 +168,7 @@ class S2VTmodel:
         h1 = tf.zeros([batch_size, self.n_hidden])
         c2 = tf.zeros([batch_size, self.n_hidden])
         h2 = tf.zeros([batch_size, self.n_hidden])
-        #state1 = tf.zeros([batch_size, self.lstm1.state_size])
-        #state2 = tf.zeros([batch_size, self.lstm2.state_size])
+        
         padding = tf.zeros([batch_size, self.n_hidden])
 
         outputs = []
@@ -270,15 +261,18 @@ class S2VTmodel:
         with tf.Session(config=config) as sess:
             sess.run(init)
 
+            valid_scores = []
+
             for step in range(epoch):
                 sample_probability = float(step)/2*epoch
                 for b, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size, X, y, self.n_step2+1)):
+                    use_ss = [(np.random.uniform(0, 1) > sample_probability) for i in range(self.n_step2)]
                     _, loss_val = sess.run(
                                     [optimizer, loss], 
                                     feed_dict={
                                         self.video: batch_X,
                                         self.caption: batch_y,
-                                        self.schedule_sampling: sample_probability
+                                        self.schedule_sampling: use_ss
                                     })
 
                     print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}'.format(step, b, loss_val))
@@ -296,11 +290,13 @@ class S2VTmodel:
                     scores.append(bleu.eval(sent, vy))
                
                 print('epoch no.{:d} done, \tvalidation score: {:.5f}'.format(step, np.mean(scores)))
+                valid_scores.append(np.mean(scores))
 
                 if step % period == period-1:
                     saver.save(sess, os.path.join('models/', name), global_step=step)
                     print('model checkpoint saved on step {:d}'.format(step))
 
+            np.save(os.path.join('results/', name), np.asarray(valid_scores))    
         
     
     def predict(self, X, model_path='./models/'):
