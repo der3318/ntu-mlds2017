@@ -36,6 +36,8 @@ def main(args):
                 n_hidden=args.hidden,
                 n_step1=frames,
                 n_step2=args.nstep,
+                use_ss=args.use_ss,
+                use_att=args.use_att,
                 n_words=n_words,
                 dim_image=dim_image,
                 seed=3318
@@ -52,24 +54,17 @@ def main(args):
                     name=args.name
                     )
 
-    test_X, test_y = Data.gen_test_data(caption_num=1)
+    test_X, test_y = Data.gen_test_data()
     
     pred = model.predict(test_X, model_path=os.path.join(model_path, args.name))
 
     scores = []
-    for i, (p, ty) in enumerate(zip(pred, test_y)):
+    for p, ty in zip(pred, test_y):
         sent = Data.get_sentence_by_indices(p)
-        print('correct captions:\n')
-        print('\n'.join(['\t'+cap for cap in ty]))
-
-        print('\npredicted caption:\n\t' + sent)
-        
         score = bleu.eval(sent, ty)
-        print('\naverage bleu score: ', score)
         scores.append(score)
-        print()
 
-    print('average bleu score overall: ', np.mean(scores))
+    print('\naverage bleu score overall:\n\t', np.mean(scores))
     
 
 if __name__ == '__main__':
@@ -77,7 +72,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--hidden', 
                         help='number of hidden units', 
-                        default=256, 
+                        default=512, 
                         type=int)
 
     parser.add_argument('--nstep', '-n', 
@@ -87,7 +82,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--batch_size', '-b', 
                         help='batch size', 
-                        default=50, 
+                        default=128, 
                         type=int)
 
     parser.add_argument('--rate', '-r', 
@@ -97,14 +92,22 @@ if __name__ == '__main__':
 
     parser.add_argument('--epoch', '-e',
                         help='number of epoch to train', 
-                        default=2000, 
+                        default=100, 
                         type=int)
     
     parser.add_argument('--period', '-p',
                         help='intervals between checkpoints', 
-                        default=100, 
+                        default=2, 
                         type=int)
 
+    parser.add_argument('--use_ss',
+                        help='whether to use schedule sampling',
+                        action='store_true')
+    
+    parser.add_argument('--use_att',
+                        help='whether to use attention',
+                        action='store_true')
+    
     parser.add_argument('--name',
                         help='model name to save', 
                         default='model')

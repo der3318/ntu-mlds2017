@@ -95,7 +95,7 @@ class data:
         return ' '.join(self.get_words_by_indices(indices))
 
 
-    def gen_test_data(self, caption_num=1):
+    def gen_test_data(self):
         test_X = [self.testing_data_dictionary[id]["data"] for id in self.testing_data_list]
         test_y = [self.testing_data_dictionary[id]["caption"] for id in self.testing_data_list]
 
@@ -105,7 +105,7 @@ class data:
     def gen_train_data(self, caption_num=1):
         shuffle(self.training_data_list)
         
-        test_X, test_y = self.gen_test_data(caption_num=caption_num)
+        test_X, test_y = self.gen_test_data()
 
         train_X = []
         train_y = []

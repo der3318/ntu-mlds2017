@@ -12,13 +12,15 @@ from tensorflow.contrib import rnn
 
 class S2VTmodel:
 
-    def __init__(self, n_hidden=256, n_step1=80, n_step2=20, n_words=3000, dim_image=4096, seed=3318):
+    def __init__(self, n_hidden=256, n_step1=80, n_step2=20, use_ss=False, use_att=False, n_words=3000, dim_image=4096, seed=3318):
         """
         Parameters
         ----------
         n_hidden        integer, number of hidden units
         n_step1         integer, n_steps of the encoding LSTM
         n_step2         integer, n_steps of the decoding LSTM
+        use_ss          boolean, whether to use schedule sampling
+        use_att         boolean, whether to use attention
         n_words         integer, vocabulary size
         dim_image       integer, dimension of input image
         seed            integer, ramdom seed
@@ -32,6 +34,8 @@ class S2VTmodel:
         self.n_hidden   = n_hidden
         self.n_step1    = n_step1
         self.n_step2    = n_step2
+        self.use_ss     = use_ss
+        self.use_att    = use_att
         self.n_words    = n_words
         self.dim_image  = dim_image
         self.seed       = seed
@@ -127,13 +131,18 @@ class S2VTmodel:
 
             with tf.variable_scope("LSTM1", reuse=True):
                 output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
+
+            if self.use_att: 
+                with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
+                    ht = self._embed_plus_output(current_embed, output1)
+                    #ht = output1
+
+                with tf.variable_scope("attention", reuse=(i!=0)):
+                    context = self._attention_layer(outputs, h2)
+            else:
+                context = output1
+                ht = current_embed
             
-            with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
-                ht = self._embed_plus_output(current_embed, output1)
-
-            with tf.variable_scope("attention", reuse=(i!=0)):
-                context = self._attention_layer(outputs, h2)
-
             with tf.variable_scope("LSTM2", reuse=True):
                 output2, (c2, h2) = self.lstm2(tf.concat([ht, context], axis=1), state=[c2, h2])
 
@@ -204,11 +213,16 @@ class S2VTmodel:
             with tf.variable_scope("LSTM1", reuse=True):
                 output1, (c1, h1) = self.lstm1(padding, state=[c1, h1])
             
-            with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
-                ht = self._embed_plus_output(current_embed, output1)
+            if self.use_att: 
+                with tf.variable_scope("embed_plus_output", reuse=(i!=0)):
+                    ht = self._embed_plus_output(current_embed, output1)
+                    #ht = output1
 
-            with tf.variable_scope("attention", reuse=(i!=0)):
-                context = self._attention_layer(outputs, h2)
+                with tf.variable_scope("attention", reuse=(i!=0)):
+                    context = self._attention_layer(outputs, h2)
+            else:
+                context = output1
+                ht = current_embed
 
             with tf.variable_scope("LSTM2", reuse=True):
                 output2, (c2, h2) = self.lstm2(tf.concat([ht, context], axis=1), state=[c2, h2])
@@ -245,6 +259,7 @@ class S2VTmodel:
         
         """
 
+        os.mkdir(os.path.join('./models/', name))
     
         loss = self.build_model(batch_size=batch_size)
         tf.get_variable_scope().reuse_variables()
@@ -252,7 +267,7 @@ class S2VTmodel:
         
         with tf.variable_scope(tf.get_variable_scope(),reuse=False):
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
-            saver = tf.train.Saver(max_to_keep=10)            
+            saver = tf.train.Saver(max_to_keep=50)
             init = tf.global_variables_initializer()
         
         config = tf.ConfigProto()
@@ -264,15 +279,19 @@ class S2VTmodel:
             valid_scores = []
 
             for step in range(epoch):
-                sample_probability = float(step)/2*epoch
                 for b, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size, X, y, self.n_step2+1)):
-                    use_ss = [(np.random.uniform(0, 1) > sample_probability) for i in range(self.n_step2)]
+                    if self.use_ss:
+                        sample_probability = float(step)/2*epoch
+                        ss_list = [(np.random.uniform(0, 1) > sample_probability) for i in range(self.n_step2)]
+                    else:
+                        ss_list = np.ones(self.n_step2).astype(bool)
+
                     _, loss_val = sess.run(
                                     [optimizer, loss], 
                                     feed_dict={
                                         self.video: batch_X,
                                         self.caption: batch_y,
-                                        self.schedule_sampling: use_ss
+                                        self.schedule_sampling: ss_list
                                     })
 
                     print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}'.format(step, b, loss_val))
@@ -293,7 +312,7 @@ class S2VTmodel:
                 valid_scores.append(np.mean(scores))
 
                 if step % period == period-1:
-                    saver.save(sess, os.path.join('models/', name), global_step=step)
+                    saver.save(sess, os.path.join('models/', name, name), global_step=step)
                     print('model checkpoint saved on step {:d}'.format(step))
 
             np.save(os.path.join('results/', name), np.asarray(valid_scores))    
@@ -321,8 +340,8 @@ class S2VTmodel:
             sess.run(init)
             
             saver = tf.train.Saver()
-            #save_path = tf.train.latest_checkpoint(model_path)
-            saver.restore(sess, model_path)
+            save_path = tf.train.latest_checkpoint(model_path)
+            saver.restore(sess, save_path)
 
             pred = sess.run(
                     generated_words,
