@@ -35,7 +35,7 @@ class data:
         return data_dictionary,data_list
 
 
-    def gen_validation_data(self, cross=False, caption_num=1):
+    def gen_validation_data(self, cross=False, caption_num=1, best=True):
         shuffle(self.training_data_list)
         if cross:
             fold_size = int(len(self.training_data_list)/5)
@@ -55,7 +55,10 @@ class data:
                             train_y[fold] += self.training_data_dictionary[id]["caption"]
                         else:
                             train_X[fold] += [id]*caption_num
-                            train_y[fold] += sample(self.training_data_dictionary[id]["caption"],caption_num)
+                            if best:
+                                train_y[fold] += get_best_k_caption(self.training_data_dictionary[id]["caption"],caption_num)
+                            else:
+                                train_y[fold] += sample(self.training_data_dictionary[id]["caption"],caption_num)
             return train_X,train_y,valid_X,valid_y
 
         else:
@@ -70,9 +73,19 @@ class data:
                     train_y += self.training_data_dictionary[id]["caption"]
                 else:
                     train_X += [id]*caption_num
-                    train_y += sample(self.training_data_dictionary[id]["caption"],caption_num)
+                    if best:
+                        train_y += get_best_k_caption(self.training_data_dictionary[id]["caption"],caption_num)
+                    else:
+                        train_y += sample(self.training_data_dictionary[id]["caption"],caption_num)
             return train_X,train_y,valid_X,valid_y
 
+    def get_best_k_caption(self,captions,caption_num=1):
+        import bleu
+        captions = map(str,captions)
+        score_list = [[bleu.eval(captions[y_index],captions[:y_index]+captions[y_index+1:]),y_index] for y_index in range(len(captions))]
+        score_list = sorted(score_list, key = lambda x : x[0], reverse=True)
+        selected_list = [captions[score_list[k][1]] for k in range(caption_num)]
+        return selected_list
 
     def get_vocab_size(self):
         return len(self.wordtoix)
@@ -102,7 +115,7 @@ class data:
         return test_X, test_y
         
 
-    def gen_train_data(self, caption_num=1):
+    def gen_train_data(self, caption_num=1, best=True):
         shuffle(self.training_data_list)
         
         test_X, test_y = self.gen_test_data()
@@ -115,7 +128,10 @@ class data:
                 train_y += self.training_data_dictionary[id]["caption"]
             else:
                 train_X += [id]*caption_num
-                train_y += sample(self.training_data_dictionary[id]["caption"],caption_num)
+                if best:
+                    train_y += self.get_best_k_caption(self.training_data_dictionary[id]["caption"],caption_num)
+                else:
+                    train_y += sample(self.training_data_dictionary[id]["caption"],caption_num)
         return train_X,train_y,test_X,test_y
 
     def process_sentence(self, sentence, n_step, comma=False):
@@ -154,3 +170,4 @@ class data:
 
         self.wordtoix = np.load(path_wordtoix).tolist()
         self.ixtoword = np.load(path_ixtoword).tolist()
+
