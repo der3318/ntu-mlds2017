@@ -27,9 +27,9 @@ def main(args):
             os.path.join(path, 'training_label.json'),
             os.path.join(path, 'testing_data/feat/'),
             os.path.join(path, 'testing_public_label.json'),
+            word_count_threshold=2
             )
     
-    Data.load()
     n_words = Data.get_vocab_size()
 
     model = S2VTmodel(
@@ -38,6 +38,9 @@ def main(args):
                 n_step2=args.nstep,
                 use_ss=args.use_ss,
                 use_att=args.use_att,
+                use_bn=args.use_bn,
+                beam_size=args.beam_size,
+                alpha_c=args.alpha_c,
                 n_words=n_words,
                 dim_image=dim_image,
                 seed=3318
@@ -56,14 +59,20 @@ def main(args):
 
     test_X, test_y = Data.gen_test_data()
     
-    pred = model.predict(test_X, model_path=os.path.join(model_path, args.name))
+    pred = model.predict(test_X,
+                        model_dir=model_path,
+                        name=args.name, 
+                        model_epoch=args.model_epoch)
 
     scores = []
     for p, ty in zip(pred, test_y):
-        sent = Data.get_sentence_by_indices(p)
+        #for beam in p:
+        sent = Data.get_sentence_by_indices(p[0])
+        print(sent)
         score = bleu.eval(sent, ty)
         scores.append(score)
-
+        
+        print()
     print('\naverage bleu score overall:\n\t', np.mean(scores))
     
 
@@ -108,10 +117,29 @@ if __name__ == '__main__':
                         help='whether to use attention',
                         action='store_true')
     
+    parser.add_argument('--use_bn',
+                        help='whether to use batch normalization',
+                        action='store_true')
+    
+    parser.add_argument('--beam_size',
+                        help='number of beams for beam search', 
+                        default=1, 
+                        type=int)
+    
+    parser.add_argument('--alpha_c',
+                        help='regularization parameter for attention',
+                        default=0.0,
+                        type=float)
+    
     parser.add_argument('--name',
                         help='model name to save', 
                         default='model')
     
+    parser.add_argument('--model_epoch',
+                        help='the specific checkpoint of the model', 
+                        default=None,
+                        type=int)
+
     parser.add_argument('--train',
                         help='whether train the model or not',
                         action='store_true')
