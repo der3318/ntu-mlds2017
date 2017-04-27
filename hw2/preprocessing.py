@@ -203,4 +203,5 @@ class data:
 
         self.wordtoix = np.load(path_wordtoix).tolist()
         self.ixtoword = np.load(path_ixtoword).tolist()
-
+        
+        return True
