@@ -10,8 +10,6 @@ def img2npy(img_path):
     
     return img_resize
 
-
-
 def read_tags(path='data/tags_clean.csv', min_count=1):
     """
     Arguments:
@@ -33,8 +31,6 @@ def read_tags(path='data/tags_clean.csv', min_count=1):
 
     return tags_dict
 
-
-
 def read_test_texts(path):
     """
     Arguments:
@@ -51,4 +47,3 @@ def read_test_texts(path):
         text_dict[int(id)] = text
 
     return text_dict
-

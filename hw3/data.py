@@ -5,6 +5,7 @@ import sys
 import numpy as np
 
 from scipy.spatial.distance import cosine
+from keras.preprocessing.image import ImageDataGenerator
 from utility import read_tags, read_test_texts
 
 
@@ -29,6 +30,12 @@ class Data:
         self.test_only = test_only
         self.seed = seed
         self.fixed_noise = None
+        self.data_gen = ImageDataGenerator(
+                            rotation_range=15,
+                            width_shift_range=0.2,
+                            height_shift_range=0.2,
+                            horizontal_flip=True,
+                            data_format='channels_last')
         
         np.random.seed(self.seed)
         
@@ -82,12 +89,13 @@ class Data:
     def __get_wrong_embeds(self, index):
         embed = self.train_embeds[index]
         n_embeds = self.train_embeds.shape[0]
-        wrong_embed = self.train_embeds[np.random.randint(n_embeds)]
+        randidx = np.random.randint(n_embeds)
         
-        while cosine(embed, wrong_embed) < 0.5:
-            wrong_embed = self.train_embeds[np.random.randint(n_embeds)]
+        tag_set = set(self.train_tags[index])
+        while len(tag_set.intersection(set(self.train_tags[randidx]))) > 0:
+            randidx = np.random.randint(n_embeds)
         
-        return wrong_embed
+        return self.train_embeds[randidx]
         
     def _get_wrong_embeds(self, indices):
         return np.array([self.__get_wrong_embeds(i) for i in indices])
@@ -176,10 +184,14 @@ class Data:
             batch_indices = perm_idx[start:start+batch_size]
             
             real_imgs = self.images[batch_indices]
+            real_imgs_augmented = self.data_gen.flow(real_imgs,
+                                    batch_size=batch_size,
+                                    shuffle=False)
+
             noise = self._get_noise(noise_type=noise_type, 
                                     shape=(batch_size, noise_dim))
             right_embeds = self.train_embeds[batch_indices]
             wrong_embeds = self._get_wrong_embeds(batch_indices)
             
-            yield real_imgs, noise, right_embeds, wrong_embeds
+            yield real_imgs_augmented, noise, right_embeds, wrong_embeds
 
