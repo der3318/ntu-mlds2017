@@ -98,8 +98,11 @@ class Data:
         return self.train_embeds[randidx]
         
     def _get_wrong_embeds(self, indices):
-        return np.array([self.__get_wrong_embeds(i) for i in indices])
-        
+        return np.array([self.__get_wrong_embeds(i) for i in indices]) 
+    
+    def get_data_length(self):
+        return self.train_embeds.shape[0]
+
     def get_embed_dim(self):
         return self.train_embeds.shape[1]
 
@@ -184,9 +187,9 @@ class Data:
             batch_indices = perm_idx[start:start+batch_size]
             
             real_imgs = self.images[batch_indices]
-            real_imgs_augmented = self.data_gen.flow(real_imgs,
+            real_imgs_augmented = next(self.data_gen.flow(real_imgs,
                                     batch_size=batch_size,
-                                    shuffle=False)
+                                    shuffle=False))
 
             noise = self._get_noise(noise_type=noise_type, 
                                     shape=(batch_size, noise_dim))
