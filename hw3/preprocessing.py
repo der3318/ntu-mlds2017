@@ -3,16 +3,11 @@ import os
 import sys
 import argparse
 
-from utility import img2npy
+from sklearn.preprocessing import MultiLabelBinarizer
+from utility import img2npy, read_tags, read_test_texts
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('data_dir',
-                        help='directory contains face jpgs')
-
-    args = parser.parse_args()
-    
+def preprocess_img(args):
     save_dir_path = './data/'
     if not os.path.exists(save_dir_path):
         print('creating data directory')
@@ -31,3 +26,48 @@ if __name__ == '__main__':
 
     print('saving all images into images.npy')
     np.save(os.path.join(save_dir_path, 'images.npy'), images)
+
+
+def preprocess_onehot(args):
+    save_dir_path = './data/'
+    if not os.path.exists(save_dir_path):
+        print('creating data directory')
+        os.makedirs(save_dir_path, exist_ok=True)
+    
+    keywords = np.load('./data/keywords.npy')
+    tags = read_tags()
+    tags = [list(filter(lambda x: x in keywords, tags[id])) for id in range(33431)]
+
+    mlb = MultiLabelBinarizer()
+    mlb.fit(tags)
+
+    tags_onehot = mlb.transform(tags)
+    np.save('data/embed_onehot.npy', tags_onehot)
+
+    # testing texts
+    texts = read_test_texts(args.test_file)
+    save_dir_path = './data/test_onehot/'
+    if not os.path.exists(save_dir_path):
+        print('creating data directory')
+        os.makedirs(save_dir_path)
+
+    for id in texts:
+        save_file_path = os.path.join(save_dir_path,
+                                    'embedding_'+str(id)+'.npy')
+        text = list(filter(lambda x: x in texts[id], keywords))
+        print(text)
+        vec = mlb.transform([text])
+        np.save(save_file_path, vec[0])
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('data_dir',
+                        help='directory contains face jpgs')
+    parser.add_argument('test_file',
+                        help='path to testing text file')
+
+    args = parser.parse_args()
+    
+    preprocess_img(args)
+    preprocess_onehot(args)

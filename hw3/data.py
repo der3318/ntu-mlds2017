@@ -2,73 +2,56 @@ from __future__ import print_function
 
 import os
 import sys
+import time
 import numpy as np
 
 from scipy.spatial.distance import cosine
 from keras.preprocessing.image import ImageDataGenerator
 from utility import read_tags, read_test_texts
+from embedding import Embedding
 
 
 class Data:
     
     support_noise_type = ['normal', 'uniform']
     
-    def __init__(self, test_file,
+    def __init__(self, train_file, test_file,
+                 train_embed_path='./data/embed_skipthoughts.npy',
                  test_embed_path='./data/test',
-                 test_only=False, seed=3318):
+                 seed=3318):
         """
         Args:
+            train_file: path to tag_clean.csv
             test_file: path to testing text file
-            test_embed_path: path to testing embeddings
-            test_only: whether this data class if for
-                       test only
+            train_embed_path: path to training embeddings
+            test_embed_path: path to directory contains
+                             testing embeddings
             seed: seed for reproducing
 
         """
+        self.train_file = train_file
         self.test_file = test_file
+        self.train_embed_path = train_embed_path
         self.test_embed_path = test_embed_path
-        self.test_only = test_only
         self.seed = seed
         self.fixed_noise = None
         self.data_gen = ImageDataGenerator(
-                            rotation_range=15,
-                            width_shift_range=0.2,
-                            height_shift_range=0.2,
                             horizontal_flip=True,
                             data_format='channels_last')
         
         np.random.seed(self.seed)
         
         self.test_texts = read_test_texts(test_file)
-        self.train_tags = read_tags(min_count=1)
+        self.train_tags = read_tags(train_file, min_count=1)
         
-        if not self.test_only:
-            self._get_images()
+        self._get_images()
         
-        self._get_embeds(self.test_only)
+        self.embedding = Embedding(train_embed_path, test_embed_path)
+        self.train_embeds, self.test_embeds = self.embedding.get_embeds()
 
     def _get_images(self):
         print('loading images... ', end='')
         self.images = np.load('./data/images.npy', mmap_mode='r')
-        print('done')
-        
-        return
-        
-    def _get_embeds(self, test_only=False):
-        print('loading embeddings... ', end='')
- 
-        if not test_only:
-            # load training embeddings
-            self.train_embeds = np.load('./data/embed_skipthoughts.npy', 
-                                        mmap_mode='r')
-
-        # load testing embeddings
-        self.test_embeds = {}
-        for f in os.listdir(self.test_embed_path):
-            file_path = os.path.join(self.test_embed_path, f)
-            test_id = f.replace('.npy', '').replace('embedding_', '')
-            self.test_embeds[test_id] = np.load(file_path)
-        
         print('done')
         
         return
@@ -193,6 +176,7 @@ class Data:
 
             noise = self._get_noise(noise_type=noise_type, 
                                     shape=(batch_size, noise_dim))
+            
             right_embeds = self.train_embeds[batch_indices]
             wrong_embeds = self._get_wrong_embeds(batch_indices)
             

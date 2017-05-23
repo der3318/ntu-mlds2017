@@ -1,41 +1,34 @@
 import sys
-sys.path.append('./skip-thoughts')
+import os
+import numpy as np
 
-import skipthoughts
 
 class Embedding:
-
-    support_models = ['skipthoughts']
-
-    def __init__(self, model='skipthoughts', **kwargs):
+    def __init__(self,
+                 train_embed_path='./data/embed_skipthoughts.npy',
+                 test_embed_path='./data/test/'):
         """
         Arguments:
-        model       embedding model name, support 'skipthoughts'.
+        train_embed_path    path for the training embedding
+        test_embed_path     path for the directory contains
+                            testing embedding
 
         """
-        
-        if not model in self.support_models:
-            raise ValueError('the model name %s is not supported.' % model)
+        self.train_embed_path = train_embed_path
+        self.test_embed_path = test_embed_path
 
-        self.model_name = model
+        return
 
-        if model == 'skipthoughts':
-            self.model = Skipthoughts()
+    def get_embeds(self):
+        # load training embeddings
+        train_embeds = np.load(self.train_embed_path, mmap_mode='r')
 
+        # load testing embeddings
+        test_embeds = {}
+        for f in os.listdir(self.test_embed_path):
+            file_path = os.path.join(self.test_embed_path, f)
+            test_id = f.replace('.npy', '').replace('embedding_', '')
+            test_embeds[test_id] = np.load(file_path)
 
-    def encode(self, sentence):
-        return self.model.encode(sentence)
+        return train_embeds, test_embeds
 
-
-
-class Skipthoughts:
-
-    dim = 4800
-
-    def __init__(self): 
-        self.model = skipthoughts.load_model()
-        self.encoder = skipthoughts.Encoder(self.model)
-
-
-    def encode(self, sentence):
-        return self.encoder.encode(sentence, verbose=False)
