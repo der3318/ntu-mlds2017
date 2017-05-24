@@ -4,6 +4,7 @@ import sys
 import argparse
 
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.externals import joblib
 from utility import img2npy, read_tags, read_test_texts
 
 
@@ -40,6 +41,7 @@ def preprocess_onehot(args):
 
     mlb = MultiLabelBinarizer()
     mlb.fit(tags)
+    joblib.dump(mlb, 'binarizer.pkl')
 
     tags_onehot = mlb.transform(tags)
     np.save('data/embed_onehot.npy', tags_onehot)
@@ -60,14 +62,34 @@ def preprocess_onehot(args):
         np.save(save_file_path, vec[0])
 
 
+def preprocess_test_embed(test_file):
+    mlb = joblib.load('binarizer.pkl')
+    keywords = np.load('./data/keywords.npy')
+    # testing texts
+    texts = read_test_texts(test_file)
+    save_dir_path = './data/test_onehot/'
+    if not os.path.exists(save_dir_path):
+        print('creating data directory')
+        os.makedirs(save_dir_path)
+
+    for id in texts:
+        save_file_path = os.path.join(save_dir_path,
+                                    'embedding_'+str(id)+'.npy')
+        text = list(filter(lambda x: x in texts[id], keywords))
+        print(text)
+        vec = mlb.transform([text])
+        np.save(save_file_path, vec[0])
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('data_dir',
+    parser.add_argument('--data_dir',
                         help='directory contains face jpgs')
     parser.add_argument('test_file',
                         help='path to testing text file')
 
     args = parser.parse_args()
     
-    preprocess_img(args)
-    preprocess_onehot(args)
+    #preprocess_img(args)
+    #preprocess_onehot(args)
+    preprocess_test_embed(args.test_file)
