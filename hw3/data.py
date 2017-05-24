@@ -36,6 +36,8 @@ class Data:
         self.seed = seed
         self.fixed_noise = None
         self.data_gen = ImageDataGenerator(
+                            width_shift_range=0.05,
+                            height_shift_range=0.05,
                             horizontal_flip=True,
                             data_format='channels_last')
         
@@ -48,6 +50,15 @@ class Data:
         
         self.embedding = Embedding(train_embed_path, test_embed_path)
         self.train_embeds, self.test_embeds = self.embedding.get_embeds()
+
+        # remove those data with all-zero embedding
+        idx = np.sum(self.train_embeds, axis=1) > 0
+        idx = np.logical_and(idx, np.sum(self.train_embeds, axis=1) < 4)
+        idx = np.arange(self.train_embeds.shape[0])[idx]
+        self.images = self.images[idx]
+        self.train_embeds = self.train_embeds[idx]
+        self.train_tags = [self.train_tags[i] for i in idx]
+
 
     def _get_images(self):
         print('loading images... ', end='')
@@ -119,8 +130,8 @@ class Data:
                         supports normal and uniform
 
         Returns:
-            fixed_noise: shape (1, noise_dim)
-                         a fixed noise, used for all testing data
+            fixed_noise: dictionary, where its key is test_id
+                         and the corresponding value is noise
             test_embeds: dictionary, where its key is test_id
                          and the corresponding value is embedding
         """
@@ -130,8 +141,10 @@ class Data:
                       ' replaced with normal'.format(noise_type))
                 noise_type = 'normal'
 
-            self.fixed_noise = self._get_noise(noise_type=noise_type,
-                                               shape=(1, noise_dim))
+            self.fixed_noise = {}
+            for id in self.test_embeds:
+                self.fixed_noise[id] = self._get_noise(noise_type=noise_type,
+                                                        shape=(noise_dim,))
         
         return self.fixed_noise, self.test_embeds
     
