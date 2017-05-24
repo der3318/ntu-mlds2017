@@ -18,6 +18,7 @@ class Data:
     def __init__(self, train_file, test_file,
                  train_embed_path='./data/embed_skipthoughts.npy',
                  test_embed_path='./data/test',
+                 test_only=False,
                  seed=3318):
         """
         Args:
@@ -44,20 +45,21 @@ class Data:
         np.random.seed(self.seed)
         
         self.test_texts = read_test_texts(test_file)
-        self.train_tags = read_tags(train_file, min_count=1)
         
-        self._get_images()
-        
-        self.embedding = Embedding(train_embed_path, test_embed_path)
-        self.train_embeds, self.test_embeds = self.embedding.get_embeds()
+        if not test_only:
+            self.train_tags = read_tags(train_file, min_count=1)
+            self._get_images()
+            
+            self.embedding = Embedding(train_embed_path, test_embed_path)
+            self.train_embeds, self.test_embeds = self.embedding.get_embeds()
 
-        # remove those data with all-zero embedding
-        idx = np.sum(self.train_embeds, axis=1) > 0
-        idx = np.logical_and(idx, np.sum(self.train_embeds, axis=1) < 4)
-        idx = np.arange(self.train_embeds.shape[0])[idx]
-        self.images = self.images[idx]
-        self.train_embeds = self.train_embeds[idx]
-        self.train_tags = [self.train_tags[i] for i in idx]
+            # remove those data with all-zero embedding
+            idx = np.sum(self.train_embeds, axis=1) > 0
+            idx = np.logical_and(idx, np.sum(self.train_embeds, axis=1) < 4)
+            idx = np.arange(self.train_embeds.shape[0])[idx]
+            self.images = self.images[idx]
+            self.train_embeds = self.train_embeds[idx]
+            self.train_tags = [self.train_tags[i] for i in idx]
 
 
     def _get_images(self):
