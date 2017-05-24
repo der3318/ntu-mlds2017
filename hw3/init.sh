@@ -17,7 +17,7 @@ set -e
 
 mkdir -p data/
 
-python3 preprocessing.py $1 $2
+python3 preprocessing.py --data_dir $1 $2
 
 wget https://github.com/ryankiros/skip-thoughts/archive/master.zip
 unzip master.zip

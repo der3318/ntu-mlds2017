@@ -39,9 +39,7 @@ def preprocess_onehot(args):
     tags = read_tags()
     tags = [list(filter(lambda x: x in keywords, tags[id])) for id in range(33431)]
 
-    mlb = MultiLabelBinarizer()
-    mlb.fit(tags)
-    joblib.dump(mlb, 'binarizer.pkl')
+    mlb = joblib.load('binarizer.pkl')
 
     tags_onehot = mlb.transform(tags)
     np.save('data/embed_onehot.npy', tags_onehot)
@@ -87,9 +85,15 @@ if __name__ == '__main__':
                         help='directory contains face jpgs')
     parser.add_argument('test_file',
                         help='path to testing text file')
+    parser.add_argument('--test',
+                        action='store_true',
+                        help='whether this is for testing')
+
 
     args = parser.parse_args()
     
-    #preprocess_img(args)
-    #preprocess_onehot(args)
-    preprocess_test_embed(args.test_file)
+    if not args.test:
+        preprocess_img(args)
+        preprocess_onehot(args)
+    else:
+        preprocess_test_embed(args.test_file)
