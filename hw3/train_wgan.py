@@ -153,7 +153,7 @@ def train(args,total_data):
         print ("Saving Images, Model")
         save_for_vis(args.img_dir, generated_images,i)
         print ("Save for vis finish!")
-        save_path = saver.save(sess, "./data/model/model_after_epoch_{}.ckpt".format(i))
+        save_path = saver.save(sess, "./data/model/model_after_epoch_{}_{}.ckpt".format(i,args.model_type))
         print ("End Save!")
 
 def save_for_vis(data_dir, generated_images, global_step):

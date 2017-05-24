@@ -45,13 +45,12 @@ class Data:
         np.random.seed(self.seed)
         
         self.test_texts = read_test_texts(test_file)
+        self.embedding = Embedding(train_embed_path, test_embed_path)
+        self.train_embeds, self.test_embeds = self.embedding.get_embeds()
         
         if not test_only:
             self.train_tags = read_tags(train_file, min_count=1)
             self._get_images()
-            
-            self.embedding = Embedding(train_embed_path, test_embed_path)
-            self.train_embeds, self.test_embeds = self.embedding.get_embeds()
 
             # remove those data with all-zero embedding
             idx = np.sum(self.train_embeds, axis=1) > 0
