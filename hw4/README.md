@@ -1,3 +1,9 @@
+## Training data
+
+The training data is from [Marsan-Ma chat corpus](https://github.com/Marsan-Ma/chat_corpus)
+
+I use the open_subtitles.
+
 ## Build dictionary and preprocess training data
 
 Sample usage:
