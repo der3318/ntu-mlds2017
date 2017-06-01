@@ -160,7 +160,7 @@ class seq2seq:
 
 
         return loss, tf.transpose(generated_words)
-    def train(self, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0):
+    def train(self, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0, resume_model_path=None):
         """
         Parameters
         ----------
@@ -175,6 +175,7 @@ class seq2seq:
         period          integer, intervals between checkpoints
         name            string, model name to save
         dropout_rate    float
+        resume_model_path   the path of resume path, otherwise, None
         """
         # TODO: 如果是restore就不intialize
 
@@ -186,7 +187,6 @@ class seq2seq:
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
             scope.reuse_variables()
-            X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
             valid_loss, _ = self.build_model(batch_size=len(valid_X), is_training=True)
 
             # with tf.variable_scope(tf.get_variable_scope(),reuse=False):
@@ -198,7 +198,8 @@ class seq2seq:
             #
             #     optimizer = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
             #     saver = tf.train.Saver(max_to_keep=10)
-
+            sample_rates = [1, 0.8, 0.5]
+            sample_rate_boundary = [epoch / 2, epoch * 3 / 4, epoch]
             # TODO: gradient clipping
             saver = tf.train.Saver(max_to_keep=10)
 
@@ -206,12 +207,20 @@ class seq2seq:
             config.gpu_options.allow_growth = True
 
             with tf.Session(config=config) as sess:
-                # NOT to initalize when restoring
                 init = tf.global_variables_initializer()
                 sess.run(init)
+
+                if resume_model_path != None:
+                    saver.restore(sess, resume_model_path)
+                    print('Restore model done')
+
                 for step in range(epoch):
 
-                    schedule_sampling_rate = 1.0 if step <= epoch / 2 else 0.5
+                    for i in range(len(sample_rates)):
+                        if step <= sample_rate_boundary[i]:
+                            schedule_sampling_rate = sample_rates[i]
+                            break
+                    print("The schedule sampling rate is {}".format(schedule_sampling_rate))
                     # TODO: valid_X is not the size of (batch_size * n_hidden), so will cause ERROR
                     if step % period == 0:
                         save_path = saver.save(sess, "./models/{}/model_after_epoch_{}.ckpt".format(name,step))
@@ -271,8 +280,6 @@ class seq2seq:
                         print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}'.format(step, batch_idx, train_loss_value), end='\r', flush=True)
 
 
-                    # resample data
-                    X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
 
     def restore(self, sess, model_path='./model/'):
         saver = tf.train.Saver()

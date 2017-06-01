@@ -48,7 +48,8 @@ def main(args):
         epoch=args.epoch,
         period=args.period,
         name=args.name,
-        dropout_rate=0.5)
+        dropout_rate=0.5,
+        resume_model_path=args.resume)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -84,9 +85,13 @@ if __name__ == '__main__':
                         default=1e-3,
                         type=float)
 
+    parser.add_argument('--resume',
+                        help='resume model path if resuming model',
+                        default=None)
+
     parser.add_argument('--epoch', '-e',
                         help='number of epoch to train',
-                        default=100,
+                        default=200,
                         type=int)
     parser.add_argument('--dict_path',
                         help='path of dictionary file',
