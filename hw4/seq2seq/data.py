@@ -55,7 +55,7 @@ class data:
         pad_id = self.get_index_by_word('<PAD>')
         return bos + id_list + eos + ([pad_id] * (self.n_step - len(id_list) - 2) )
 
-    def gen_train_data(self, test_ratio=0.05):
+    def gen_train_data(self, test_ratio=0.01):
         shuffle(self.train_data)
 
         test_X, test_y = [], []
@@ -63,15 +63,17 @@ class data:
         train_y = []
         testing_size = len(self.train_data) * test_ratio
 
+        total = 0
         for idx, id in enumerate(self.train_data):
             if len(id[0]) > self.n_step - 2 or len(id[1]) > self.n_step - 2:
                 continue
-            if idx >= testing_size:
+            if total >= testing_size:
                 train_X += [id[0]]
                 train_y += [id[1]]
             else:
                 test_X += [id[0]]
                 test_y += [id[1]]
+            total += 1
 
         test_X = np.asarray([self.process_sentence(sentence) for sentence in test_X])
         test_y = np.asarray([self.process_sentence(sentence) for sentence in test_y])

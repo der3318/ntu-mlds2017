@@ -144,7 +144,7 @@ class seq2seq:
                         output, state = self.decoder(tf.nn.embedding_lookup(self.output_embed_W, [special_word_to_id('<BOS>')]), state=state)
 
                 # TODO: NOT SURE the which output is the last layer
-                logits = tf.nn.softmax( tf.matmul(output, self.output_proj_W) + self.output_proj_b )
+                logits = tf.matmul(output, self.output_proj_W) + self.output_proj_b
                 # decoder_outputs.append(logits)
                 max_prob_index = tf.argmax(logits, axis=1)
                 generated_words.append(max_prob_index)
@@ -153,14 +153,14 @@ class seq2seq:
 
                 if is_training:
                     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.output_text[:, i+1], logits=logits)
-                    cross_entropy = cross_entropy * mask[:,i+1]
+                    cross_entropy = cross_entropy * mask[:, i]
 
                     loss = loss + (tf.reduce_sum(cross_entropy) / batch_size)
 
 
 
         return loss, tf.transpose(generated_words)
-    def train(self, X, y, valid_X, valid_y, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0):
+    def train(self, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0):
         """
         Parameters
         ----------
@@ -178,14 +178,16 @@ class seq2seq:
         """
         # TODO: 如果是restore就不intialize
 
+        X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
 
         os.makedirs(os.path.join('./models/', name), exist_ok=True)
         with tf.variable_scope('Train') as scope:
             loss, _ = self.build_model(batch_size=batch_size, is_training=True)
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+
             scope.reuse_variables()
+            X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
             valid_loss, _ = self.build_model(batch_size=len(valid_X), is_training=True)
-            # tf.get_variable_scope().reuse_variables()
 
             # with tf.variable_scope(tf.get_variable_scope(),reuse=False):
             #     # TODO: global_step在哪裡加
@@ -208,9 +210,24 @@ class seq2seq:
                 init = tf.global_variables_initializer()
                 sess.run(init)
                 for step in range(epoch):
+
+                    schedule_sampling_rate = 1.0 if step <= epoch / 2 else 0.5
                     # TODO: valid_X is not the size of (batch_size * n_hidden), so will cause ERROR
+                    if step % period == 0:
+                        save_path = saver.save(sess, "./models/{}/model_after_epoch_{}.ckpt".format(name,step))
+                        # saver.save(sess, os.path.join('./models/', name, name), global_step=step)
+                        print('model checkpoint saved on step {:d}'.format(step))
+                    print("size of valid {}, {}".format(len(valid_X), len(valid_y)))
                     if valid_X is not None and valid_y is not None:
-                        valid_loss_value = sess.run(
+                        valid_loss_value1 = sess.run(
+                            valid_loss,
+                            feed_dict={
+                                self.input_text: valid_X,
+                                self.output_text: valid_y,
+                                self.dropout_rate: 0,
+                                self.schedule_sampling_rate: 1 ## TODO: not sure the rate should be
+                            })
+                        valid_loss_value0 = sess.run(
                             valid_loss,
                             feed_dict={
                                 self.input_text: valid_X,
@@ -218,14 +235,13 @@ class seq2seq:
                                 self.dropout_rate: 0,
                                 self.schedule_sampling_rate: 0 ## TODO: not sure the rate should be
                             })
-                    print('epoch no.{:d} done, \tvalidation loss: {:.5f}'.format(step, np.mean(valid_loss_value)))
+                    print('epoch no.{:d} done, \tvalidation loss0, 1: {:.5f}, {:.5f}'.format(step, np.mean(valid_loss_value0), np.mean(valid_loss_value1)))
                     for batch_idx, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size, X, y)):
                         # TODO: schedule_sampling
-
                         feed_dict = {
                             self.input_text: batch_X,
                             self.output_text: batch_y,
-                            self.schedule_sampling_rate: 0.5,
+                            self.schedule_sampling_rate: schedule_sampling_rate,
                             self.dropout_rate: dropout_rate
                         }
 
@@ -241,11 +257,22 @@ class seq2seq:
                             [optimizer, loss],
                             feed_dict=feed_dict
                         )
+
+                        feed_dict = {
+                            self.input_text: batch_X,
+                            self.output_text: batch_y,
+                            self.schedule_sampling_rate: 1,
+                            self.dropout_rate: 0
+                        }
+                        train_loss_value = sess.run(
+                            loss,
+                            feed_dict=feed_dict
+                        )
                         print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}'.format(step, batch_idx, train_loss_value), end='\r', flush=True)
 
-                    if step % period == period-1:
-                        saver.save(sess, os.path.join('./models/', name, name), global_step=step)
-                        print('model checkpoint saved on step {:d}'.format(step))
+
+                    # resample data
+                    X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
 
     def restore(self, sess, model_path='./model/'):
         saver = tf.train.Saver()
@@ -287,14 +314,16 @@ class seq2seq:
             def att_cell():
                 return rnn.DropoutWrapper(cell=cell(), output_keep_prob=(1 - dropout_rate))
 
-        return rnn.MultiRNNCell([att_cell() for _ in range(self.n_layers)])
+        if self.n_layers > 1:
+            return rnn.MultiRNNCell([att_cell() for _ in range(self.n_layers)])
+        return att_cell()
 
-    def linear(self, input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=False):
+    def linear(self, input_, output_size, name ,scope=None, stddev=0.02, bias_start=0.0, with_w=False):
         shape = input_.get_shape().as_list()
 
         with tf.variable_scope(scope or "Linear"):
-            matrix = tf.get_variable("Matrix", [shape[1], output_size], tf.float32,tf.random_normal_initializer(stddev=stddev))
-            bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
+            matrix = tf.get_variable("{}_M".format(name), [shape[1], output_size], tf.float32,tf.random_normal_initializer(stddev=stddev))
+            bias = tf.get_variable("{}_b".format(name), [output_size], initializer=tf.constant_initializer(bias_start))
             if with_w:
                 return tf.matmul(input_, matrix) + bias, matrix, bias
             else:

@@ -7,7 +7,7 @@ import numpy as np
 import argparse
 import collections
 import tensorflow as tf
-remove_list = ['.', ',', '?', '"', '!', '/','<i>','</ i', '[', ']', 'i>', '<muslc>', '>', '<']
+remove_list = ['.', ',', '?', '"', '!', '/','<i>','</ i', '[', ']', 'i>', '<muslc>', '>', '<', '#']
 replace_list = ['`', '´', '’']
 
 def special_word_to_id(word):
@@ -75,13 +75,13 @@ def _file_to_word_ids(filename, word_to_id, min_len=4):
     data = _read_lines(filename)
     i = 0
     pairs = []
-    while i < len(data):
+    while i + 1 < len(data):
         line1 = [word_to_id[word] for word in data[i] if word in word_to_id]
         line2 = [word_to_id[word] for word in data[i+1] if word in word_to_id]
-        if len(line1) > min_len and len(line2) > min_len:
-             pairs.append([line1, line2])
+        if len(line1) > 0 and len(line2) > min_len:
+            pairs.append([line1, line2])
         i += 2
-    # print(pairs)
+    print(pairs)
     return pairs
 
 def _save_dict(_dict, filename):

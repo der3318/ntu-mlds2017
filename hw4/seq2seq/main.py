@@ -2,9 +2,9 @@
 import argparse, os
 import numpy as np
 import tensorflow as tf
+from datetime import datetime
 from model import seq2seq
 from data import data
-
 def main(args):
 
     Data = data(
@@ -36,18 +36,18 @@ def main(args):
 
 
     # model.build_model(batch_size=args.batch_size, is_training=True)
-    train_X, train_y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
+    # train_X, train_y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
     model.train(
-        X=train_X,
-        y=train_y,
-        valid_X=valid_X,
-        valid_y=valid_y,
+        # X=train_X,
+        # y=train_y,
+        # valid_X=valid_X,
+        # valid_y=valid_y,
         Data=Data,
-        batch_size=64,
-        learning_rate=1e-3,
-        epoch=2000,
-        period=100,
-        name='model',
+        batch_size=args.batch_size,
+        learning_rate=args.rate,
+        epoch=args.epoch,
+        period=args.period,
+        name=args.name,
         dropout_rate=0.5)
 
 if __name__ == '__main__':
@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--batch_size', '-b',
                         help='batch size',
-                        default=64,
+                        default=128,
                         type=int)
 
     parser.add_argument('--rate', '-r',
@@ -94,10 +94,10 @@ if __name__ == '__main__':
     parser.add_argument('--data_path',
                         help='path of data file',
                         default='./open_subtitles.npy')
-    # parser.add_argument('--period', '-p',
-    #                     help='intervals between checkpoints',
-    #                     default=2,
-    #                     type=int)
+    parser.add_argument('--period', '-p',
+                        help='intervals between checkpoints',
+                        default=2,
+                        type=int)
     #
     parser.add_argument('--use_ss',
                         help='whether to use schedule sampling',
@@ -121,9 +121,9 @@ if __name__ == '__main__':
                         default=0.0,
                         type=float)
 
-    # parser.add_argument('--name',
-    #                     help='model name to save',
-    #                     default='model')
+    parser.add_argument('--name',
+                        help='model name to save',
+                        default='model_{}'.format(datetime.now().strftime("%Y-%m-%d-%H:%M")))
     #
     # parser.add_argument('--model_epoch',
     #                     help='the specific checkpoint of the model',
