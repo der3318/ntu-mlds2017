@@ -141,7 +141,7 @@ class seq2seq:
                     if is_training:
                         output, state = self.decoder(self.embed_output[:,i,:], state=state)
                     else: # testing # TODO: testing start HOWTO <BOS> 2
-                        output, state = self.decoder(tf.nn.embedding_lookup(self.output_embed_W, [special_word_to_id('<BOS>')]), state=state)
+                        output, state = self.decoder(tf.nn.embedding_lookup(self.output_embed_W, [special_word_to_id('<BOS>') for _ in range(batch_size)]), state=state)
 
                 # TODO: NOT SURE the which output is the last layer
                 logits = tf.matmul(output, self.output_proj_W) + self.output_proj_b
@@ -188,6 +188,7 @@ class seq2seq:
 
             scope.reuse_variables()
             valid_loss, _ = self.build_model(batch_size=len(valid_X), is_training=True)
+            _, sample_sentence = self.build_model(batch_size=5, is_training=False)
 
             # with tf.variable_scope(tf.get_variable_scope(),reuse=False):
             #     # TODO: global_step在哪裡加
@@ -244,7 +245,24 @@ class seq2seq:
                                 self.dropout_rate: 0,
                                 self.schedule_sampling_rate: 0 ## TODO: not sure the rate should be
                             })
-                    print('epoch no.{:d} done, \tvalidation loss0, 1: {:.5f}, {:.5f}'.format(step, np.mean(valid_loss_value0), np.mean(valid_loss_value1)))
+                        print('epoch no.{:d} done, \tvalidation loss0, 1: {:.5f}, {:.5f}'.format(step, np.mean(valid_loss_value0), np.mean(valid_loss_value1)))
+
+                        # Generate sample sentence
+                        sample_valid_X = random.sample(list(valid_X), k=5)
+                        sample_sentence_gen = sess.run(
+                            sample_sentence,
+                            feed_dict={
+                                self.input_text: sample_valid_X,
+                                self.output_text: valid_y,          # NOT IMPORTANT
+                                self.dropout_rate: 0,               # NOT IMPORTANT
+                                self.schedule_sampling_rate: 0      # NOT IMPORTANT
+                            }
+                        )
+                        for i, x in enumerate(sample_sentence_gen):
+                            print('Sample original sentence: ' + ' '.join(Data.get_words_by_indices(sample_valid_X[i])))
+                            print('Sample generated sentence: ' + ' '.join(Data.get_words_by_indices(x)))
+                    else:
+                        print('epoch no.{:d} done.'.format(step))
                     for batch_idx, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size, X, y)):
                         # TODO: schedule_sampling
                         feed_dict = {

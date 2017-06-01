@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--rate', '-r',
                         help='learning rate',
-                        default=1e-3,
+                        default=1e-2,
                         type=float)
 
     parser.add_argument('--resume',
