@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
-import argparse, os
-import numpy as np
-import tensorflow as tf
-from datetime import datetime
-from model import seq2seq
 from data import data
+from model import seq2seq
+import argparse
+import tensorflow as tf
+import numpy as np
 def main(args):
 
     Data = data(
@@ -18,7 +16,7 @@ def main(args):
     print(n_words)
 
 
-        # dropout預設皆使用， att, bn, beam search皆未實作
+    # dropout預設皆使用， att, bn, beam search皆未實作
     model = seq2seq(
             n_layers=args.layers,
             n_hidden=args.hidden,
@@ -26,8 +24,8 @@ def main(args):
             n_step2=args.nstep,
             dim_input=n_words,
             dim_output=n_words,
-            embedding_dim=130,
             use_ss=args.use_ss,
+            use_att=args.use_att,
             use_bn=args.use_bn,
             use_dropout=True,
             beam_size=args.beam_size,
@@ -35,24 +33,44 @@ def main(args):
             seed=3318
         )
 
+    pred_words = model.build_predict_model(
+        batch_size=1
+    )
 
-    # model.build_model(batch_size=args.batch_size, is_training=True)
-    # train_X, train_y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
-    model.train(
-        # X=train_X,
-        # y=train_y,
-        # valid_X=valid_X,
-        # valid_y=valid_y,
-        Data=Data,
-        batch_size=args.batch_size,
-        learning_rate=args.rate,
-        epoch=args.epoch,
-        period=args.period,
-        name=args.name,
-        dropout_rate=0.5,
-        resume_model_path=args.resume,
-        start_step=args.start_step,
-        ss_rate=args.ss_rate)
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+
+    with tf.Session(config=config) as sess:
+        init = tf.global_variables_initializer()
+        sess.run(init)
+
+        if args.model_path != None:
+            saver = tf.train.Saver()
+            saver.restore(sess, args.model_path)
+            print('Restore model done')
+
+
+        while True:
+            x = input("Input: ").lower().split()
+            x = Data.get_indices_by_sentence(x)
+
+            if len(x) + 2 >= args.nstep:
+                x = x[:args.nstep - 2]
+
+            x.insert(0, Data.get_index_by_word('<BOS>'))
+            x.append(Data.get_index_by_word('<EOS>'))
+            for _ in range(args.nstep - len(x)):
+                x.append(Data.get_index_by_word('<PAD>'))
+            print(x)
+            pred = model.predict(np.asarray([x]), sess, Data, predict_tensor=pred_words)
+            print(pred[0])
+            y = []
+            for i in pred[0]:
+                y += [i]
+                if i == 3:
+                    break
+            print(' '.join(Data.get_words_by_indices(y)))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -67,39 +85,21 @@ if __name__ == '__main__':
                         type=int)
     parser.add_argument('--dim_input',
                         help='dimensions of input vocabulary size',
-                        default=10000,
+                        default=5004,
                         type=int)
     parser.add_argument('--dim_output',
                         help='dimensions of output vocabulary size',
-                        default=10000,
+                        default=5004,
                         type=int)
     parser.add_argument('--nstep', '-n',
                         help='maximum length of captions',
                         default=20,
                         type=int)
 
-    parser.add_argument('--batch_size', '-b',
-                        help='batch size',
-                        default=128,
-                        type=int)
+    parser.add_argument('--model_path',
+                        help='resume model path if resuming model')
 
-    parser.add_argument('--rate', '-r',
-                        help='learning rate',
-                        default=1e-3,
-                        type=float)
 
-    parser.add_argument('--resume',
-                        help='resume model path if resuming model',
-                        default=None)
-    parser.add_argument('--start_step',
-                        help='start from step n',
-                        default=0,
-                        type=int)
-
-    parser.add_argument('--epoch', '-e',
-                        help='number of epoch to train',
-                        default=50,
-                        type=int)
     parser.add_argument('--dict_path',
                         help='path of dictionary file',
                         default='./dict.txt')
@@ -109,14 +109,15 @@ if __name__ == '__main__':
     parser.add_argument('--valid_path',
                         help='path of data file',
                         default='./data_valid.npy')
-    parser.add_argument('--period', '-p',
-                        help='intervals between checkpoints',
-                        default=1,
-                        type=int)
     #
     parser.add_argument('--use_ss',
                         help='whether to use schedule sampling',
                         action='store_true')
+
+    parser.add_argument('--use_att',
+                        help='whether to use attention',
+                        action='store_true')
+
     parser.add_argument('--use_bn',
                         help='whether to use batch normalization',
                         action='store_true')
@@ -130,22 +131,6 @@ if __name__ == '__main__':
                         help='regularization parameter for attention',
                         default=0.0,
                         type=float)
-    parser.add_argument('--ss_rate',
-                        default=1.0,
-                        type=float)
-
-    parser.add_argument('--name',
-                        help='model name to save',
-                        default='model_{}'.format(datetime.now().strftime("%Y-%m-%d-%H:%M")))
-    #
-    # parser.add_argument('--model_epoch',
-    #                     help='the specific checkpoint of the model',
-    #                     default=None,
-    #                     type=int)
-    #
-    # parser.add_argument('--train',
-    #                     help='whether train the model or not',
-    #                     action='store_true')
 
     args = parser.parse_args()
 
