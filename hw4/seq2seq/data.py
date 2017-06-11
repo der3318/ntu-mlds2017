@@ -5,10 +5,11 @@ import os
 from random import shuffle, sample
 from preprocessing import special_word_to_id
 class data:
-    def __init__(self, train_data_path, dict_path, n_step=20):
+    def __init__(self, train_data_path, valid_data_path, dict_path, n_step=20):
 
         (self.word2id, self.id2word) = self.load_dict(dict_path)
         self.train_data = self.load_data(train_data_path)
+        self.valid_data = self.load_data(valid_data_path)
         self.n_step = n_step
 
     def load_dict(self, data_path):
@@ -31,23 +32,26 @@ class data:
     def get_index_by_word(self, word):
         return self.word2id.get(word, special_word_to_id('<UNK>'))
 
+    def get_indices_by_sentence(self, sentence):
+        return [self.word2id[word] for word in sentence if word in self.word2id]
+
     def get_word_by_index(self, index):
         return self.id2word.get(index, '<UNK>')
 
     def get_words_by_indices(self, indices):
         strings = [self.get_word_by_index(index) for index in indices]
-        words = [word for word in strings if word not in ['<BOS>', '<EOS>', '<PAD>', '<UNK>']]
+        words = []
+        for word in strings:
+            if word == '<EOS>':
+                break
+            if word not in ['<BOS>', '<PAD>']:
+                words += [word]
         return words
+        # words = [word for word in strings if word not in ['<BOS>', '<EOS>', '<PAD>']]
+        # return words
 
     def get_sentence_by_indices(self, indices):
         return ' '.join(self.get_words_by_indices(indices))
-
-
-    # def gen_test_data(self):
-    #     test_X = [self.testing_data_dictionary[id]["data"] for id in self.testing_data_list]
-    #     test_y = [self.testing_data_dictionary[id]["caption"] for id in self.testing_data_list]
-    #
-    #     return np.asarray(test_X), np.asarray(test_y)
 
     def process_sentence(self, id_list):
         bos = [self.get_index_by_word('<BOS>')]
@@ -55,32 +59,34 @@ class data:
         pad_id = self.get_index_by_word('<PAD>')
         return bos + id_list + eos + ([pad_id] * (self.n_step - len(id_list) - 2) )
 
-    def gen_train_data(self, test_ratio=0.01):
-        shuffle(self.train_data)
-
-        test_X, test_y = [], []
-        train_X = []
-        train_y = []
-        testing_size = len(self.train_data) * test_ratio
-
-        total = 0
-        for idx, id in enumerate(self.train_data):
-            if len(id[0]) > self.n_step - 2 or len(id[1]) > self.n_step - 2:
+    def gen_data(self, data):
+        X, y = [], []
+        for idx, pair in enumerate(data):
+            if len(pair[0]) > self.n_step - 2 or len(pair[1]) > self.n_step - 2:
                 continue
-            if total >= testing_size:
-                train_X += [id[0]]
-                train_y += [id[1]]
-            else:
-                test_X += [id[0]]
-                test_y += [id[1]]
-            total += 1
+            X += [pair[0]]
+            y += [pair[1]]
+        return X, y
 
-        test_X = np.asarray([self.process_sentence(sentence) for sentence in test_X])
-        test_y = np.asarray([self.process_sentence(sentence) for sentence in test_y])
-        return train_X, train_y, test_X, test_y
+    def gen_train_data(self):
+        shuffle(self.train_data)
+        train_X, train_y = self.gen_data(self.train_data)
 
+        return train_X, train_y
 
-    def get_next_batch(self, batch_size, train_X, train_y):
+    def gen_valid_data(self, size=None):
+        shuffle(self.valid_data)
+        if size != None and size <= len(self.valid_data):
+            valid_X, valid_y = self.gen_data(self.valid_data[:size])
+        else:
+            valid_X, valid_y = self.gen_data(self.valid_data)
+        valid_X = np.asarray([self.process_sentence(sentence) for sentence in valid_X])
+        valid_y = np.asarray([self.process_sentence(sentence) for sentence in valid_y])
+
+        return valid_X, valid_y
+
+    def get_next_batch(self, batch_size):
+        train_X, train_y = self.gen_train_data()
         train_data = list(zip(train_X,train_y))
         shuffle(train_data)
         train_X, train_y = zip(*train_data)

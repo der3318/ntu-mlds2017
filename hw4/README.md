@@ -8,7 +8,14 @@ I use the open_subtitles.
 
 Sample usage:
 ```
-python3 preprocessing.py --corpus_path ../chat_corpus/open_subtitles.txt --save_path open_subtitles.npy --vocab_size 5000 --min_len 4
+python3 preprocessing.py \
+    --corpus_path ../chat_corpus/open_subtitles.txt \
+    --corpus_path ../chat_corpus/movie_subtitles_en.txt \
+    --save_path data \
+    --dict_path dict.txt \
+    --min_len 4 \
+    --valid_ratio 0.01 \
+    --vocab_size 20000 \
 
 python3 main.py --use_ss
 ```
