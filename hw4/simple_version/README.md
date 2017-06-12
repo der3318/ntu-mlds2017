@@ -18,3 +18,8 @@
 * Test with Input Sentences - `$ python3 main.py`
 
 
+#### Train and Test with RL and Attention-Mask
+* Train - `$ python3 main_rl.py --train`
+* Test with Input Sentences - `$ python3 main_rl.py`
+
+
