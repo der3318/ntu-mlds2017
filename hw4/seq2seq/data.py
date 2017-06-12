@@ -44,7 +44,7 @@ class data:
         for word in strings:
             if word == '<EOS>':
                 break
-            if word not in ['<BOS>', '<PAD>']:
+            if word not in ['<BOS>']: # take out <PAD> for visualization
                 words += [word]
         return words
         # words = [word for word in strings if word not in ['<BOS>', '<EOS>', '<PAD>']]

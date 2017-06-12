@@ -26,7 +26,7 @@ def main(args):
             n_step2=args.nstep,
             dim_input=n_words,
             dim_output=n_words,
-            embedding_dim=130,
+            embedding_dim=200,
             use_ss=args.use_ss,
             use_bn=args.use_bn,
             use_dropout=True,

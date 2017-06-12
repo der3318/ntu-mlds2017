@@ -90,7 +90,6 @@ def _file_to_word_ids(filenames, word_to_id, min_len=4):
         if len(line1) > 0 and len(line2) > min_len and max(line1_unk, line2_unk) < 3:
             pairs.append([line1, line2])
         i += 2
-    print(pairs)
     return pairs
 
 def _save_dict(_dict, filename):
