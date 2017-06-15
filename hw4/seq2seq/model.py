@@ -5,6 +5,7 @@ import numpy as np
 import math, os, sys, random
 from preprocessing import special_word_to_id
 from tensorflow.contrib import legacy_seq2seq
+from bleu import BLEU
 class seq2seq:
     def __init__(self,
                 n_layers    = 4,
@@ -61,7 +62,7 @@ class seq2seq:
         ### Placeholders and Variables
         self.input_text = tf.placeholder(tf.int32, [None, self.n_step1])
         self.output_text = tf.placeholder(tf.int32, [None, self.n_step2])
-
+        self.bleu_score = tf.placeholder(tf.float32, [None])
         # sampling rate should be from large to small while training
         # the probability of using the true label for decoder's input
         self.schedule_sampling_rate = tf.placeholder(tf.float32)
@@ -140,7 +141,7 @@ class seq2seq:
                 softmax_loss_function=None,
                 name=None
             )
-            loss = tf.reduce_sum(loss) / batch_size
+            xent_loss = tf.reduce_sum(loss) / batch_size
 
             reshape_output = tf.nn.softmax(tf.transpose(tf.stack(outputs), perm=[1,0,2])) + np.finfo(np.float32).eps # [batch_size, n_steps, dim_output]
             perplexity = 0.0
@@ -150,16 +151,19 @@ class seq2seq:
                 perplexity += tf.exp(entropy)
             perplexity /= batch_size
 
-            return loss, outputs, perplexity
+            rl_loss = tf.multiply(self.bleu_score - tf.maximum( 0.01,tf.reduce_mean(self.bleu_score)), tf.reduce_sum(tf.log(tf.reduce_max(reshape_output, axis=2)), axis=1))
+            rl_loss = -tf.reduce_sum(rl_loss) / batch_size
+
+            return xent_loss, rl_loss, perplexity
 
 
         mask = [1] * self.dim_output
         mask[special_word_to_id('<UNK>')] = 0
         mask = [mask] * batch_size
-        outputs = [tf.nn.softmax(output) * mask for output in outputs]
-        return tf.argmax(tf.transpose(tf.stack(outputs), perm=[1,0,2]), axis=2)
+        masked_outputs = [tf.nn.softmax(output) * mask for output in outputs]
+        return tf.argmax(tf.transpose(tf.stack(masked_outputs), perm=[1,0,2]), axis=2)
 
-    def train(self, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0, resume_model_path=None, start_step=0, ss_rate=1.0):
+    def train(self, Data, batch_size=64, learning_rate=1e-3, epoch=100, period=3, name='model', dropout_rate=0.0, resume_model_path=None, start_step=0, ss_rate=1.0, rl=False):
         """
         Parameters
         ----------
@@ -177,15 +181,18 @@ class seq2seq:
 
         # X, y, valid_X, valid_y = Data.gen_train_data(test_ratio=0.01)
         valid_X, valid_y = Data.gen_valid_data()
-        print('Training')
+        print('Training with rl={}'.format(rl))
         os.makedirs(os.path.join('./models/', name), exist_ok=True)
         with tf.variable_scope('Model') as scope:
-            loss, _, perplexity = self.build_model(batch_size=batch_size, is_training=True)
-            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+            xent_loss, rl_loss, perplexity = self.build_model(batch_size=batch_size, is_training=True)
+            adam = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            optimizer = adam.minimize(xent_loss)
+            rl_optimizer = adam.minimize(rl_loss)
             print('Model built with batch size = {}'.format(batch_size))
             scope.reuse_variables()
             valid_loss, valid_output, _ = self.build_model(batch_size=batch_size, is_training=True)
             sample_sentence = self.build_model(batch_size=5, is_training=False)
+            train_sentence = self.build_model(batch_size=batch_size, is_training=False)
 
             # sample_rates = [1, 0.9]
             # sample_rate_boundary = [10, epoch * 3 / 4, epoch]
@@ -204,6 +211,43 @@ class seq2seq:
                     saver.restore(sess, resume_model_path)
                     print('Restore model done')
 
+                def rl_round(X, y, _dropout_rate):
+                    sentence = sess.run(train_sentence, feed_dict={
+                        self.input_text: X,
+                        self.output_text: y,
+                        self.dropout_rate: _dropout_rate,
+                        self.schedule_sampling_rate: 0,
+                        self.bleu_score: np.zeros([batch_size])
+                    })
+                    # for i, s in enumerate(sentence):
+                    #     print(' '.join(Data.get_words_by_indices(s)))
+                    #     print(' '.join(Data.get_words_by_indices(y[i])))
+                    bleu_score = [BLEU(' '.join(Data.get_words_by_indices(s)), ' '.join(Data.get_words_by_indices(y[i]))) for i, s in enumerate(sentence)]
+                    rl_loss_val, _, perplex_val= sess.run([rl_loss, rl_optimizer, perplexity], feed_dict={
+                        self.input_text: X,
+                        self.output_text: y,
+                        self.dropout_rate: _dropout_rate,
+                        self.schedule_sampling_rate: 0,
+                        self.bleu_score: bleu_score
+                    })
+
+                    return rl_loss_val, perplex_val, np.sum(bleu_score) / batch_size
+
+                def xent_round(X, y, _dropout_rate, _sampling_rate):
+                    _, xent_loss_val, perplex_val = sess.run(
+                        [optimizer, xent_loss, perplexity],
+                        feed_dict={
+                            self.input_text: batch_X,
+                            self.output_text: batch_y,
+                            self.schedule_sampling_rate: _sampling_rate,
+                            self.dropout_rate: _dropout_rate,
+                            self.bleu_score: np.zeros([batch_size])
+                        }
+                    )
+                    return xent_loss_val, perplex_val
+
+
+
                 for step in range(start_step, epoch):
 
                     # for i in range(len(sample_rates)):
@@ -215,6 +259,48 @@ class seq2seq:
                     # TODO: valid_X is not the size of (batch_size * n_hidden), so will cause ERROR
 
                         # saver.save(sess, os.path.join('./models/', name, name), global_step=step)
+
+                    for batch_idx, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size)):
+                        if rl:
+                            if step % 2 == 1:
+                                train_loss_value, perplex_val = xent_round(batch_X, batch_y, dropout_rate, schedule_sampling_rate)
+                                print('Xent epoch no.{:d}, batch no.{:d}, loss: {:.6f}, perplexity: {:.4f}'.format(step, batch_idx, train_loss_value, perplex_val), end='\r', flush=True)
+                            else:
+                                train_loss_value, perplex_val, bleu_val = rl_round(batch_X, batch_y, dropout_rate)
+                                print('RL epoch no.{:d}, batch no.{:d}, loss: {:.6f}, perplexity: {:.4f}, bleu: {:.4f}'.format(step, batch_idx, train_loss_value, perplex_val, bleu_val), end='\r', flush=True)
+                        else:
+                            train_loss_value, perplex_val = xent_round(batch_X, batch_y, dropout_rate, schedule_sampling_rate)
+                            print('Xent epoch no.{:d}, batch no.{:d}, loss: {:.6f}, perplexity: {:.4f}'.format(step, batch_idx, train_loss_value, perplex_val), end='\r', flush=True)
+
+                        # feed_dict = {
+                        #     self.input_text: batch_X,
+                        #     self.output_text: batch_y,
+                        #     self.schedule_sampling_rate: schedule_sampling_rate,
+                        #     self.dropout_rate: dropout_rate,
+                        #     self.bleu_score: np.zeros([batch_size])
+                        # }
+                        #
+                        # _, train_loss_value, perplex_val = sess.run(
+                        #     [optimizer, xent_loss, perplexity],
+                        #     feed_dict=feed_dict
+                        # )
+
+                        # feed_dict = {
+                        #     self.input_text: batch_X,
+                        #     self.output_text: batch_y,
+                        #     self.schedule_sampling_rate: 1,
+                        #     self.dropout_rate: 0,
+                        #     self.bleu_score: np.zeros([batch_size])
+                        # }
+                        # train_loss_value = sess.run(
+                        #     xent_loss,
+                        #     feed_dict=feed_dict
+                        # )
+
+                    if step % period == 0:
+                        save_path = saver.save(sess, "./models/{}/model_after_epoch_{}.ckpt".format(name,step))
+                        print('model checkpoint saved on step {:d}'.format(step))
+
                     print("size of valid {}, {}".format(len(valid_X), len(valid_y)))
                     if valid_X is not None and valid_y is not None:
                         valid_loss_value0, valid_loss_value1 = 0.0, 0.0
@@ -228,7 +314,8 @@ class seq2seq:
                                     self.input_text: valid_X[valid_idx:valid_idx+batch_size],
                                     self.output_text: valid_y[valid_idx:valid_idx+batch_size],
                                     self.dropout_rate: 0,
-                                    self.schedule_sampling_rate: 1
+                                    self.schedule_sampling_rate: 1,
+                                    self.bleu_score: np.zeros([batch_size])
                                 }))
                             valid_loss_value0 += np.mean(sess.run(
                                 valid_loss,
@@ -236,7 +323,8 @@ class seq2seq:
                                     self.input_text: valid_X[valid_idx:valid_idx+batch_size],
                                     self.output_text: valid_y[valid_idx:valid_idx+batch_size],
                                     self.dropout_rate: 0,
-                                    self.schedule_sampling_rate: 0
+                                    self.schedule_sampling_rate: 0,
+                                    self.bleu_score: np.zeros([batch_size])
                                 }))
 
                         print('epoch no.{:d} done, \tvalidation loss0, 1: {:.5f}, {:.5f}'.format(step, valid_loss_value0 / valid_iter, valid_loss_value1 / valid_iter))
@@ -261,45 +349,6 @@ class seq2seq:
                             print('g: ' + ' '.join(Data.get_words_by_indices(filtered_x)))
                     else:
                         print('epoch no.{:d} done.'.format(step))
-                    for batch_idx, (batch_X, batch_y) in enumerate(Data.get_next_batch(batch_size)):
-                        # TODO: schedule_sampling
-                        feed_dict = {
-                            self.input_text: batch_X,
-                            self.output_text: batch_y,
-                            self.schedule_sampling_rate: schedule_sampling_rate,
-                            self.dropout_rate: dropout_rate
-                        }
-
-                        # if self.use_dropout:
-                        #     feed_dict[self.dropout_rate] = dropout_rate
-                        # if self.use_ss:
-                        #     if step < 2:
-                        #         feed_dict[self.schedule_sampling_rate] = 1.0
-                        #     else:
-                        #         feed_dict[self.schedule_sampling_rate] = 0.5
-
-                        _, train_loss_value, perplex_val = sess.run(
-                            [optimizer, loss, perplexity],
-                            feed_dict=feed_dict
-                        )
-
-                        feed_dict = {
-                            self.input_text: batch_X,
-                            self.output_text: batch_y,
-                            self.schedule_sampling_rate: 1,
-                            self.dropout_rate: 0
-                        }
-                        train_loss_value = sess.run(
-                            loss,
-                            feed_dict=feed_dict
-                        )
-                        print('epoch no.{:d}, batch no.{:d}, loss: {:.6f}, perplexity: {:.4f}'.format(step, batch_idx, train_loss_value, perplex_val), end='\r', flush=True)
-
-                    if step % period == 0:
-                        save_path = saver.save(sess, "./models/{}/model_after_epoch_{}.ckpt".format(name,step))
-                        print('model checkpoint saved on step {:d}'.format(step))
-
-
     def restore(self, sess, model_path='./model/'):
         saver = tf.train.Saver()
         saver.restore(sess, model_path)
@@ -321,7 +370,7 @@ class seq2seq:
 
             if reuse:
                 tf.get_variable_scope().reuse_variables()
-            _, pred_words = self.build_model(batch_size=batch_size, is_training=False)
+            pred_words = self.build_model(batch_size=batch_size, is_training=False)
 
         return pred_words
 

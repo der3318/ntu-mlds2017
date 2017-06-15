@@ -26,7 +26,7 @@ def main(args):
             n_step2=args.nstep,
             dim_input=n_words,
             dim_output=n_words,
-            embedding_dim=200,
+            embedding_dim=args.embedding,
             use_ss=args.use_ss,
             use_bn=args.use_bn,
             use_dropout=True,
@@ -52,7 +52,8 @@ def main(args):
         dropout_rate=0.5,
         resume_model_path=args.resume,
         start_step=args.start_step,
-        ss_rate=args.ss_rate)
+        ss_rate=args.ss_rate,
+        rl=args.rl)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -82,7 +83,10 @@ if __name__ == '__main__':
                         help='batch size',
                         default=128,
                         type=int)
-
+    parser.add_argument('--embedding',
+                        help='embedding size',
+                        default=130,
+                        type=int)
     parser.add_argument('--rate', '-r',
                         help='learning rate',
                         default=1e-3,
@@ -120,7 +124,9 @@ if __name__ == '__main__':
     parser.add_argument('--use_bn',
                         help='whether to use batch normalization',
                         action='store_true')
-
+    parser.add_argument('--rl',
+                        help='whether to use schedule sampling',
+                        action='store_true')
     parser.add_argument('--beam_size',
                         help='number of beams for beam search',
                         default=1,

@@ -24,8 +24,9 @@ def main(args):
             n_step2=args.nstep,
             dim_input=n_words,
             dim_output=n_words,
+            embedding_dim=args.embedding,
             use_ss=args.use_ss,
-            use_att=args.use_att,
+            # use_att=args.use_att,
             use_bn=args.use_bn,
             use_dropout=True,
             beam_size=args.beam_size,
@@ -49,9 +50,8 @@ def main(args):
             saver.restore(sess, args.model_path)
             print('Restore model done')
 
-
-        while True:
-            x = input("Input: ").lower().split()
+        def gen_sentence(x):
+            x = x.lower().split()
             x = Data.get_indices_by_sentence(x)
 
             if len(x) + 2 >= args.nstep:
@@ -61,15 +61,30 @@ def main(args):
             x.append(Data.get_index_by_word('<EOS>'))
             for _ in range(args.nstep - len(x)):
                 x.append(Data.get_index_by_word('<PAD>'))
-            print(x)
+            # print(x)
             pred = model.predict(np.asarray([x]), sess, Data, predict_tensor=pred_words)
-            print(pred[0])
+            # print(pred[0])
             y = []
             for i in pred[0]:
                 y += [i]
                 if i == 3:
                     break
-            print(' '.join(Data.get_words_by_indices(y)))
+            return ' '.join(Data.get_words_by_indices(y))
+
+        if args.input_path == None:
+            while True:
+                x = input("Input: ")
+                print(gen_sentence(x))
+        else:
+            output_file = open(args.output_path, 'w')
+            with open(args.input_path, "r") as input_file:
+
+                for line in input_file:
+                    output_file.write("{}\n".format(gen_sentence(line)))
+            output_file.close()
+
+
+
 
 
 if __name__ == '__main__':
@@ -82,6 +97,10 @@ if __name__ == '__main__':
     parser.add_argument('--layers',
                         help='number of hidden layers',
                         default=2,
+                        type=int)
+    parser.add_argument('--embedding',
+                        help='embedding size',
+                        default=130,
                         type=int)
     parser.add_argument('--dim_input',
                         help='dimensions of input vocabulary size',
@@ -131,6 +150,12 @@ if __name__ == '__main__':
                         help='regularization parameter for attention',
                         default=0.0,
                         type=float)
+    parser.add_argument('--input_path',
+                        help='path of input file',
+                        default=None)
+    parser.add_argument('--output_path',
+                        help='path of outptu file',
+                        default='output.txt')
 
     args = parser.parse_args()
 
